@@ -1,0 +1,10 @@
+# Opcional (Blueprint). Se o serviço já existe como Docker, basta o Dockerfile + a variável abaixo.
+services:
+  - type: web
+    name: brasapp96
+    runtime: docker
+    plan: free
+    healthCheckPath: /healthz
+    envVars:
+      - key: GOOGLE_SERVICE_ACCOUNT_JSON
+        sync: false
