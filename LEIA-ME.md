@@ -44,6 +44,19 @@ npm run setup             # planilha nova: cria as abas e o primeiro admin
 npm test                  # testa todos os fluxos com uma planilha simulada
 ```
 
+## Impressora térmica (conta do cliente)
+
+Na tela da comanda, o botão **🖨️ Imprimir** gera a conta (itens, observações, total e total no crédito +5%) em papel 58mm, sem passar pelo servidor. A escolha da impressora fica salva no aparelho. Para trocar, use **Menu → 🖨️ Impressora** ou segure o botão Imprimir.
+
+| Aparelho | Como conectar |
+|---|---|
+| Android + Google Chrome | Pareie a impressora em Configurações → Bluetooth (PIN costuma ser `0000` ou `1234`). No app: Imprimir → **Bluetooth (recomendado)** → escolha a impressora. |
+| Computador Windows/Mac + Chrome ou Edge | Pareie no Bluetooth do sistema e use a mesma opção. |
+| Android sem a opção Bluetooth (navegador antigo ou Samsung Internet) | Instale o app **RawBT** na Play Store, configure a impressora nele e escolha **App RawBT**. |
+| iPhone | O Safari não acessa Bluetooth. Esta impressora não funciona pelo navegador. |
+
+Os acentos saem removidos (Pão → Pao), porque essas térmicas genéricas não imprimem acento de forma confiável.
+
 ## Limites e cuidados
 
 - **Uma instância só.** O controle de concorrência (antigo LockService) fica na memória do servidor. Não aumente o número de instâncias.

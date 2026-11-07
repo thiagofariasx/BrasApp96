@@ -87,6 +87,16 @@
     .total-info { font-size: 1.1rem; font-weight: bold; }
     .total-info span { color: #ffab40; }
     .btn-fechar { background-color: #2e7d32; border: none; color: white; padding: 10px 18px; border-radius: 6px; font-weight: bold; font-size: 1rem; cursor: pointer; }
+    .footer-acoes { display: flex; gap: 8px; align-items: center; }
+    .btn-imprimir { background: #303030; border: 1px solid #555; color: #eee; padding: 10px 14px; border-radius: 6px; font-weight: bold; font-size: 1rem; cursor: pointer; display: inline-flex; gap: 6px; align-items: center; min-height: 44px; }
+    .btn-imprimir:disabled { opacity: .55; cursor: wait; }
+    .impressora-status { color: #ddd; margin: 0 0 12px; font-size: .92rem; }
+    .impressora-opcoes { display: grid; gap: 8px; }
+    .impressora-opcoes button { text-align: left; padding: 11px 13px; min-height: 52px; display: flex; flex-direction: column; gap: 2px; width: 100%; }
+    .impressora-opcoes small { font-weight: 400; opacity: .78; font-size: .75rem; }
+    .impressora-opcoes .ativa { outline: 2px solid #ff9800; }
+    .impressora-aviso { color: #ffb74d; font-size: .82rem; min-height: 1em; margin: 10px 0 0; }
+    @media (max-width: 420px) { .btn-imprimir .texto { display: none; } .btn-imprimir { padding: 10px 12px; } }
 
     .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 99; padding: 20px; align-items: center; justify-content: center; }
     .modal.topo { z-index: 130; }
@@ -418,6 +428,7 @@ body:not(.logado) .sidebar{display:none}
       <button type="button" class="side-item" data-tela="abertas">🍢 <span>Comandas</span></button>
       <button type="button" class="side-item" data-tela="fechadas">✓ <span>Vendas</span></button>
       <button type="button" class="side-item so-atendente" data-tela="saida">💸 <span>Lançar saída</span></button>
+      <button type="button" class="side-item" onclick="fecharMenu();abrirModalImpressora()">🖨️ <span>Impressora</span></button>
       <div class="side-grupo so-admin">Financeiro</div>
       <button type="button" class="side-item so-admin" data-tela="financeiro">💰 <span>Financeiro</span></button>
       <button type="button" class="side-item so-admin" data-tela="caixa">🧮 <span>Fechar caixa</span></button>
@@ -629,7 +640,29 @@ body:not(.logado) .sidebar{display:none}
       <div class="total-info">
         Total: <span id="totalValor">R$ 0,00</span>
       </div>
-      <button class="btn-fechar" onclick="abrirModalFechamento()">Fechar Comanda</button>
+      <div class="footer-acoes">
+        <button type="button" class="btn-imprimir" id="btnImprimirComanda" onclick="imprimirComandaAtual()" title="Imprimir conta para o cliente" aria-label="Imprimir conta"><span aria-hidden="true">🖨️</span><span class="texto">Imprimir</span></button>
+        <button class="btn-fechar" onclick="abrirModalFechamento()">Fechar Comanda</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: IMPRESSORA TÉRMICA -->
+  <div class="modal topo" id="modalImpressora">
+    <div class="modal-content">
+      <h2>🖨️ Impressora</h2>
+      <p class="impressora-status" id="impStatus">Nenhuma impressora configurada.</p>
+      <div class="impressora-opcoes">
+        <button type="button" class="btn-confirm" id="impBtnSerial" onclick="conectarImpressora('serial')">Bluetooth (recomendado)<small>Pareie a impressora no Bluetooth do aparelho antes</small></button>
+        <button type="button" class="btn-sec" id="impBtnBle" onclick="conectarImpressora('ble')">Bluetooth BLE<small>Se a impressora não aparecer na opção acima</small></button>
+        <button type="button" class="btn-sec" id="impBtnRawbt" onclick="conectarImpressora('rawbt')">App RawBT (Android)<small>Para celulares sem suporte às opções acima</small></button>
+        <button type="button" class="btn-sec" onclick="conectarImpressora('sistema')">Impressora do sistema / PDF<small>Usa a janela de impressão do navegador</small></button>
+      </div>
+      <p class="impressora-aviso" id="impAviso"></p>
+      <div class="modal-actions">
+        <button type="button" class="btn-cancel" onclick="fecharModalImpressora()">Fechar</button>
+        <button type="button" class="btn-confirm" id="impBtnTeste" onclick="imprimirTeste()">Imprimir teste</button>
+      </div>
     </div>
   </div>
 
@@ -2390,6 +2423,182 @@ body:not(.logado) .sidebar{display:none}
       },15000);
     }
     window.addEventListener('load',iniciar);
+  </script>
+  <script>
+    // ===== Impressão térmica 58mm (ESC/POS) =====
+    // Modos: 'serial' = Web Serial sobre Bluetooth clássico (Chrome Android/PC), 'ble' = Web Bluetooth,
+    // 'rawbt' = app RawBT no Android, 'sistema' = janela de impressão do navegador.
+    const IMP_CHAVE='brasero96_impressora_v1', IMP_COLUNAS=32, IMP_SPP='00001101-0000-1000-8000-00805f9b34fb';
+    const IMP_SERVICOS_BLE=['000018f0-0000-1000-8000-00805f9b34fb','e7810a71-73ae-499d-8c15-faa9aef0c3f2',
+      '49535343-fe7d-4ae5-8fa9-9fafd205e455','0000ff00-0000-1000-8000-00805f9b34fb','0000ffe0-0000-1000-8000-00805f9b34fb',
+      '0000fee7-0000-1000-8000-00805f9b34fb','0000af30-0000-1000-8000-00805f9b34fb'];
+    const imp={cfg:store.ler(IMP_CHAVE,{modo:''}),porta:null,bleCar:null,bleDisp:null,pendente:null,ocupada:false};
+    const impAndroid=/Android/i.test(navigator.userAgent);
+    const impNomeModo={serial:'Bluetooth',ble:'Bluetooth BLE',rawbt:'App RawBT',sistema:'Impressora do sistema'};
+
+    // Térmicas genéricas não têm acentuação confiável: imprime sem acento.
+    const impTexto=s=>String(s??'').normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[‘’]/g,"'").replace(/[“”]/g,'"')
+      .replace(/[–—]/g,'-').replace(/[·•]/g,'-').replace(/[^\x20-\x7e]/g,'');
+    const impValor=n=>Number(n||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+    const impQuebrar=(t,larg)=>{const out=[];let s=impTexto(t);while(s.length>larg){let i=s.lastIndexOf(' ',larg);if(i<larg*.5)i=larg;out.push(s.slice(0,i).trimEnd());s=s.slice(i).trimStart();}out.push(s);return out;};
+    const impLinha=(esq,dir,larg=IMP_COLUNAS)=>{esq=impTexto(esq);dir=impTexto(dir);return esq.slice(0,Math.max(0,larg-dir.length-1)).padEnd(larg-dir.length)+dir;};
+
+    // Cupom = lista de linhas {t, a:'c'|'l', b:negrito, g:0|1|2 (1=altura dupla, 2=dupla)}
+    function montarCupomComanda(nome) {
+      const c=comandasAbertas[nome], L=[], sep={t:'-'.repeat(IMP_COLUNAS)};
+      let cent=0, qtdTotal=0;
+      L.push({t:'BRASERO 96',a:'c',b:1,g:2},{t:'CONTA DE CONSUMO',a:'c',b:1},sep);
+      L.push({t:'Comanda: '+nome},{t:'Data: '+new Date().toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'}).replace(',','')},{t:'Atendente: '+(c.atendente||'-')},sep);
+      for (const [id,qtd] of Object.entries(c.itens||{})) {
+        const item=indiceCardapio.get(id), q=Number(qtd)||0;
+        if (!item||!q) continue;
+        const sub=Math.round(item.preco*100)*q;cent+=sub;qtdTotal+=q;
+        const valor=impValor(sub/100), nomes=impQuebrar(q+'x '+item.nome,IMP_COLUNAS-valor.length-1);
+        L.push({t:impLinha(nomes[0],valor)});
+        nomes.slice(1).forEach(n=>L.push({t:'   '+n}));
+        if (q>1) L.push({t:'   '+impValor(item.preco)+' cada'});
+        const obs=(c.observacoes||{})[id];
+        if (obs) impQuebrar('obs: '+obs,IMP_COLUNAS-3).forEach(n=>L.push({t:'   '+n}));
+      }
+      if (!qtdTotal) return null;
+      const taxa=Math.round(cent*0.05);
+      L.push(sep,{t:impLinha('Itens',String(qtdTotal))},{t:impLinha('TOTAL','R$ '+impValor(cent/100)),b:1,g:1},sep);
+      L.push({t:impLinha('No credito (+5%)','R$ '+impValor((cent+taxa)/100))},sep);
+      L.push({t:'Nao e documento fiscal',a:'c'},{t:'Obrigado pela preferencia!',a:'c'});
+      return L;
+    }
+
+    function cupomEscPos(linhas) {
+      const b=[0x1b,0x40];
+      for (const l of linhas) {
+        b.push(0x1b,0x61,l.a==='c'?1:0, 0x1b,0x45,l.b?1:0, 0x1d,0x21,l.g===2?0x11:l.g===1?0x01:0);
+        for (const ch of impTexto(l.t)) b.push(ch.charCodeAt(0));
+        b.push(0x0a);
+      }
+      b.push(0x1b,0x45,0,0x1d,0x21,0,0x1b,0x61,0,0x1b,0x64,4);
+      return new Uint8Array(b);
+    }
+    function cupomHtml(linhas) {
+      const corpo=linhas.map(l=>`<div style="text-align:${l.a==='c'?'center':'left'};font-weight:${l.b?700:400};font-size:${l.g===2?'18px':'11px'};line-height:${l.g===1?2:1.25}">${esc(impTexto(l.t))||'&nbsp;'}</div>`).join('');
+      return `<!doctype html><html><head><meta charset="utf-8"><title>Conta</title><style>@page{size:58mm auto;margin:0}
+        body{margin:0;padding:3mm 2mm;width:54mm;font-family:'Courier New',monospace;white-space:pre;color:#000}</style></head><body>${corpo}</body></html>`;
+    }
+
+    const impEspera=ms=>new Promise(r=>setTimeout(r,ms));
+    async function impEnviarSerial(bytes) {
+      if (!imp.porta) {
+        const portas=await navigator.serial.getPorts();
+        imp.porta=portas.find(p=>p.getInfo().bluetoothServiceClassId)||portas[0]||null;
+        if (!imp.porta) throw Object.assign(Error('Conecte a impressora.'),{code:'CONECTAR'});
+      }
+      if (!imp.porta.writable) await imp.porta.open({baudRate:9600});
+      const w=imp.porta.writable.getWriter();
+      try { for (let i=0;i<bytes.length;i+=256) {await w.write(bytes.slice(i,i+256));await impEspera(25);} }
+      finally { w.releaseLock(); }
+    }
+    async function impEnviarBle(bytes) {
+      if (!imp.bleCar||!imp.bleDisp?.gatt?.connected) {
+        if (!imp.bleDisp) {
+          const disp=(await navigator.bluetooth.getDevices?.()||[]).find(d=>d.id===imp.cfg.bleId);
+          if (!disp) throw Object.assign(Error('Conecte a impressora.'),{code:'CONECTAR'});
+          imp.bleDisp=disp;
+        }
+        imp.bleCar=await impAcharCaracteristica(await imp.bleDisp.gatt.connect());
+      }
+      const car=imp.bleCar, escrever=p=>car.properties.writeWithoutResponse?car.writeValueWithoutResponse(p):car.writeValueWithResponse(p);
+      let passo=180;
+      for (let i=0;i<bytes.length;) {
+        try {await escrever(bytes.slice(i,i+passo));i+=passo;await impEspera(20);}
+        catch (e) {if (passo===20) throw e; passo=20;}
+      }
+    }
+    async function impAcharCaracteristica(servidor) {
+      for (const s of await servidor.getPrimaryServices())
+        for (const c of await s.getCharacteristics())
+          if (c.properties.writeWithoutResponse||c.properties.write) return c;
+      throw Error('A impressora não tem canal de escrita BLE. Use a opção "Bluetooth".');
+    }
+    function impEnviarRawbt(bytes) {
+      let bin='';bytes.forEach(x=>bin+=String.fromCharCode(x));
+      location.href='intent:base64,'+btoa(bin)+'#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;';
+    }
+    function impEnviarSistema(linhas) {
+      // Janela própria: no Chrome Android, imprimir um iframe imprime a página inteira.
+      const w=window.open('','_blank','width=420,height=640');
+      if (!w) return aviso('O navegador bloqueou a janela de impressão. Permita pop-ups para este site.',true);
+      w.document.open();w.document.write(cupomHtml(linhas));w.document.close();
+      w.onafterprint=()=>w.close();
+      setTimeout(()=>{w.focus();w.print();},300);
+    }
+
+    async function impImprimir(linhas) {
+      const modo=imp.cfg.modo;
+      if (!modo) {imp.pendente=linhas;return abrirModalImpressora('Escolha como imprimir. Depois de conectar, a conta sai na hora.');}
+      if (modo==='sistema') return impEnviarSistema(linhas);
+      const bytes=cupomEscPos(linhas);
+      if (modo==='rawbt') return impEnviarRawbt(bytes);
+      try {
+        if (modo==='serial') await impEnviarSerial(bytes); else await impEnviarBle(bytes);
+        aviso('Conta enviada para a impressora.');
+      } catch (e) {
+        try {await imp.porta?.close();} catch(_) {}
+        imp.porta=null;imp.bleCar=null;
+        imp.pendente=linhas;
+        abrirModalImpressora(e.code==='CONECTAR'?'Toque em "'+impNomeModo[modo]+'" para reconectar a impressora.':
+          'Não foi possível imprimir: '+(e.message||e)+'. Verifique se a impressora está ligada e reconecte.');
+      }
+    }
+
+    async function imprimirComandaAtual() {
+      if (imp.suprimirClique) {imp.suprimirClique=false;return;}
+      if (imp.ocupada) return;
+      const linhas=comandaAtualNome&&comandasAbertas[comandaAtualNome]?montarCupomComanda(comandaAtualNome):null;
+      if (!linhas) return aviso('Adicione itens à comanda antes de imprimir.',true);
+      imp.ocupada=true;$('btnImprimirComanda').disabled=true;
+      try {await impImprimir(linhas);} finally {imp.ocupada=false;$('btnImprimirComanda').disabled=false;}
+    }
+    function imprimirTeste() {
+      impImprimir([{t:'BRASERO 96',a:'c',b:1,g:2},{t:'Teste de impressao',a:'c'},{t:'-'.repeat(IMP_COLUNAS)},
+        {t:impLinha('1x Produto de teste','10,00')},{t:impLinha('TOTAL','R$ 10,00'),b:1,g:1},{t:'Acentos removidos: Acai, Pao',a:'c'}]);
+    }
+
+    function abrirModalImpressora(msg='') {
+      $('impBtnSerial').style.display='serial' in navigator?'':'none';
+      $('impBtnBle').style.display='bluetooth' in navigator?'':'none';
+      $('impBtnRawbt').style.display=impAndroid?'':'none';
+      document.querySelectorAll('.impressora-opcoes button').forEach(b=>b.classList.toggle('ativa',b.getAttribute('onclick')?.includes(`'${imp.cfg.modo}'`)&&!!imp.cfg.modo));
+      $('impStatus').textContent=imp.cfg.modo?'Configurada: '+impNomeModo[imp.cfg.modo]+(imp.cfg.nome?' · '+imp.cfg.nome:''):'Nenhuma impressora configurada.';
+      $('impAviso').textContent=msg||(!('serial' in navigator)&&!('bluetooth' in navigator)?
+        'Este navegador não acessa Bluetooth. Use o Google Chrome (Android ou computador). No iPhone só funciona a opção do sistema.':'');
+      $('modalImpressora').style.display='flex';
+    }
+    function fecharModalImpressora() {$('modalImpressora').style.display='none';imp.pendente=null;}
+
+    async function conectarImpressora(modo) {
+      try {
+        if (modo==='serial') {
+          try {await imp.porta?.close();} catch(_) {}
+          imp.porta=await navigator.serial.requestPort({allowedBluetoothServiceClassIds:[IMP_SPP]});
+          imp.cfg={modo,nome:'Bluetooth'};
+        } else if (modo==='ble') {
+          imp.bleDisp=await navigator.bluetooth.requestDevice({acceptAllDevices:true,optionalServices:IMP_SERVICOS_BLE});
+          imp.bleCar=await impAcharCaracteristica(await imp.bleDisp.gatt.connect());
+          imp.cfg={modo,nome:imp.bleDisp.name||'BLE',bleId:imp.bleDisp.id};
+        } else imp.cfg={modo};
+        store.gravar(IMP_CHAVE,imp.cfg);
+        const pendente=imp.pendente;
+        fecharModalImpressora();
+        aviso('Impressora configurada: '+impNomeModo[modo]+'.');
+        if (pendente) impImprimir(pendente);
+      } catch (e) {
+        if (e.name==='NotFoundError') return $('impAviso').textContent='Nenhuma impressora escolhida. Ligue a impressora e confira se ela está pareada no Bluetooth do aparelho.';
+        $('impAviso').textContent='Falha ao conectar: '+(e.message||e);
+      }
+    }
+    // Pressionar e segurar o botão Imprimir abre as configurações da impressora.
+    (()=>{const b=$('btnImprimirComanda');let t;b.addEventListener('contextmenu',e=>{e.preventDefault();abrirModalImpressora();});
+      b.addEventListener('pointerdown',()=>{imp.suprimirClique=false;t=setTimeout(()=>{imp.suprimirClique=true;abrirModalImpressora();},700);});
+      ['pointerup','pointerleave','pointercancel'].forEach(ev=>b.addEventListener(ev,()=>clearTimeout(t)));})();
   </script>
 </body>
 </html>
